@@ -1,0 +1,110 @@
+# ============================================================
+# KnucklesProducts — MySQL Pod (Budget-Friendly)
+# ============================================================
+# Runs MySQL inside the AKS cluster instead of using Azure
+# Database for MySQL (~$12/month savings).
+#
+# In production, replace with Azure Database for MySQL
+# by simply changing DB_HOST in the ConfigMap/Secret.
+# ============================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knuckles-mysql
+  namespace: knuckles
+  labels:
+    app: knuckles-mysql
+    tier: database
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: knuckles-mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: knuckles-mysql
+        tier: database
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.0
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: knuckles-secrets
+                  key: DB_PASSWORD
+            - name: MYSQL_DATABASE
+              value: "knucklesproducts"
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: knuckles-secrets
+                  key: DB_USERNAME
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: knuckles-secrets
+                  key: DB_PASSWORD
+          volumeMounts:
+            - name: mysql-storage
+              mountPath: /var/lib/mysql
+          livenessProbe:
+            exec:
+              command: ["mysqladmin", "ping", "-h", "localhost"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["mysqladmin", "ping", "-h", "localhost"]
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
+      volumes:
+        - name: mysql-storage
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+
+---
+# ── PVC: Persistent storage for MySQL data ──────────────────
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: knuckles
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: managed-premium
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+# ── Service: Makes MySQL accessible within the cluster ──────
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: knuckles
+  labels:
+    app: knuckles-mysql
+spec:
+  type: ClusterIP
+  selector:
+    app: knuckles-mysql
+  ports:
+    - port: 3306
+      targetPort: 3306

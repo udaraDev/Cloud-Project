@@ -6,6 +6,8 @@ use App\Models\Cart;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\User;
+use App\Jobs\SendOrderConfirmationJob;
+use App\Jobs\UpdateInventoryJob;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -131,6 +133,14 @@ class CheckoutController extends Controller
             Cart::where('user_id', Auth::id())->delete();
 
             DB::commit();
+
+            // ── Async Microservice Communication ───────────────────
+            // These jobs are dispatched to the Redis queue and processed
+            // by the Queue Worker service (separate container).
+            // The SendOrderConfirmationJob also publishes to Redis pub/sub,
+            // which the Notification Microservice (Node.js) consumes.
+            SendOrderConfirmationJob::dispatch($order->id);
+            UpdateInventoryJob::dispatch($order->id);
 
             // Redirect based on payment method
             if ($request->payment_method === 'payhere') {

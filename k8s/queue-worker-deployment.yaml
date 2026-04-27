@@ -1,0 +1,84 @@
+# ============================================================
+# KnucklesProducts — Queue Worker Deployment
+# ============================================================
+# This is the "Order Processing Service" — a separate
+# deployment that processes async jobs from the Redis queue.
+#
+# Maps to the "queue-worker" service in docker-compose.yml.
+#
+# Key difference from the app deployment:
+#   - No Service needed (workers don't receive HTTP traffic)
+#   - Runs `php artisan queue:work` instead of PHP-FPM
+#   - Independently scalable via its own HPA
+# ============================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knuckles-queue-worker
+  namespace: knuckles
+  labels:
+    app: knuckles-queue-worker
+    tier: worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: knuckles-queue-worker
+  template:
+    metadata:
+      labels:
+        app: knuckles-queue-worker
+        tier: worker
+    spec:
+      containers:
+        - name: queue-worker
+          image: knucklesacr.azurecr.io/knuckles-app:latest
+          # Override the default CMD to run the queue worker
+          command: ["php", "artisan", "queue:work", "redis",
+                    "--sleep=3", "--tries=3", "--max-time=3600",
+                    "--max-jobs=500"]
+          envFrom:
+            - configMapRef:
+                name: knuckles-config
+            - secretRef:
+                name: knuckles-secrets
+          # Liveness probe — ensures worker hasn't crashed
+          livenessProbe:
+            exec:
+              command:
+                - php
+                - -r
+                - "echo 'alive';"
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "300m"
+              memory: "256Mi"
+
+---
+# ── HPA: Auto-scales workers based on CPU ──────────────────
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: knuckles-queue-worker-hpa
+  namespace: knuckles
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: knuckles-queue-worker
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80

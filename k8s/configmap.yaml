@@ -1,0 +1,56 @@
+# ============================================================
+# KnucklesProducts — Kubernetes ConfigMap
+# ============================================================
+# Non-sensitive configuration shared across all pods.
+# Sensitive values go in secrets.yaml instead.
+# ============================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: knuckles-config
+  namespace: knuckles
+  labels:
+    app: knuckles
+    project: knucklesproducts
+data:
+  APP_NAME: "KnucklesProducts"
+  APP_ENV: "production"
+  APP_DEBUG: "false"
+  APP_URL: "https://knucklesproducts.com"
+
+  # Database — In dev/demo: in-cluster MySQL pod (budget-friendly)
+  # In production: change to Azure Database for MySQL hostname
+  DB_CONNECTION: "mysql"
+  DB_HOST: "mysql"
+  DB_PORT: "3306"
+  DB_DATABASE: "knucklesproducts"
+
+  # Session — externalized to Azure Cache for Redis
+  # This enables horizontal scaling: all app pods share sessions
+  SESSION_DRIVER: "redis"
+  SESSION_LIFETIME: "120"
+
+  # Cache — Azure Cache for Redis
+  CACHE_STORE: "redis"
+
+  # Queue — Redis acts as the message broker between services
+  QUEUE_CONNECTION: "redis"
+
+  # Redis — In dev/demo: in-cluster Redis pod (budget-friendly)
+  # In production: change to Azure Cache for Redis hostname
+  REDIS_CLIENT: "phpredis"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+
+  # Logging
+  LOG_CHANNEL: "stderr"
+  LOG_LEVEL: "info"
+
+  # Mail
+  MAIL_MAILER: "smtp"
+  MAIL_FROM_ADDRESS: "noreply@knucklesproducts.com"
+  MAIL_FROM_NAME: "KnucklesProducts"
+
+  # Filesystem — Azure Blob Storage
+  FILESYSTEM_DISK: "s3"

@@ -1,0 +1,168 @@
+# ============================================================
+# KnucklesProducts — Laravel App Deployment
+# ============================================================
+# This deploys the main Laravel web application.
+# Maps to the "app" service in docker-compose.yml.
+#
+# Features:
+#   - 2 replicas (horizontal scaling) with HPA for auto-scaling
+#   - Liveness and readiness probes for self-healing
+#   - Resource limits for predictable scheduling
+#   - Environment from ConfigMap + Secrets
+# ============================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knuckles-app
+  namespace: knuckles
+  labels:
+    app: knuckles-app
+    tier: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: knuckles-app
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: knuckles-app
+        tier: frontend
+    spec:
+      containers:
+        - name: app
+          image: knucklesacr.azurecr.io/knuckles-app:latest
+          ports:
+            - containerPort: 9000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: knuckles-config
+            - secretRef:
+                name: knuckles-secrets
+          # Health checks — Kubernetes restarts unhealthy pods automatically
+          livenessProbe:
+            httpGet:
+              path: /up
+              port: 9000
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /up
+              port: 9000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+        # Nginx sidecar for serving the Laravel app
+        - name: nginx
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+              protocol: TCP
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: nginx-config
+
+---
+# ── Service: Exposes the app pods to the cluster ────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: knuckles-app
+  namespace: knuckles
+  labels:
+    app: knuckles-app
+spec:
+  type: ClusterIP
+  selector:
+    app: knuckles-app
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
+
+---
+# ── HPA: Auto-scales app pods based on CPU usage ───────────
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: knuckles-app-hpa
+  namespace: knuckles
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: knuckles-app
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+---
+# ── Nginx ConfigMap for the sidecar ────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: knuckles
+data:
+  default.conf: |
+    server {
+        listen 80;
+        server_name _;
+        root /var/www/html/public;
+        index index.php;
+
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-XSS-Protection "1; mode=block" always;
+
+        location / {
+            try_files $uri $uri/ /index.php?$query_string;
+        }
+
+        location /health {
+            access_log off;
+            return 200 'healthy';
+            add_header Content-Type text/plain;
+        }
+
+        location ~ \.php$ {
+            fastcgi_pass 127.0.0.1:9000;
+            fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+            include fastcgi_params;
+        }
+
+        location ~ /\.(?!well-known).* {
+            deny all;
+        }
+    }
