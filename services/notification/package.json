@@ -1,0 +1,15 @@
+{
+  "name": "knuckles-notification-service",
+  "version": "1.0.0",
+  "description": "Notification microservice for KnucklesProducts - listens to Redis events and sends email notifications",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "ioredis": "^5.3.2",
+    "nodemailer": "^6.9.7"
+  }
+}

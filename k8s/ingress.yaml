@@ -1,0 +1,65 @@
+# ============================================================
+# KnucklesProducts — Kubernetes Ingress
+# ============================================================
+# Routes external traffic into the AKS cluster.
+#
+# Uses the NGINX Ingress Controller (install with:
+#   kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.2/deploy/static/provider/cloud/deploy.yaml
+# )
+#
+# In production, add:
+#   - TLS certificate (via cert-manager + Let's Encrypt)
+#   - Rate limiting annotations
+#   - Azure Application Gateway Ingress Controller (AGIC)
+# ============================================================
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: knuckles-ingress
+  namespace: knuckles
+  labels:
+    app: knuckles
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    # Rate limiting for security
+    nginx.ingress.kubernetes.io/limit-rps: "20"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
+    # SSL redirect in production
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # cert-manager for automatic TLS
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  rules:
+    # Main application
+    - host: knucklesproducts.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: knuckles-app
+                port:
+                  number: 80
+
+    # Notification service health/API (internal monitoring)
+    - host: notify.knucklesproducts.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: knuckles-notification
+                port:
+                  number: 3001
+
+  # TLS configuration (uncomment for production)
+  # tls:
+  #   - hosts:
+  #       - knucklesproducts.com
+  #       - notify.knucklesproducts.com
+  #     secretName: knuckles-tls-secret

@@ -1,0 +1,118 @@
+# ============================================================
+# KnucklesProducts — Notification Service Deployment
+# ============================================================
+# This is the Node.js notification microservice — a completely
+# separate codebase from the Laravel app.
+#
+# Maps to the "notification-service" in docker-compose.yml.
+#
+# Demonstrates:
+#   - Polyglot architecture (PHP + Node.js in same cluster)
+#   - Async event-driven communication via Redis pub/sub
+#   - Independent deployment and scaling
+#   - Single responsibility (only handles notifications)
+# ============================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knuckles-notification
+  namespace: knuckles
+  labels:
+    app: knuckles-notification
+    tier: microservice
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: knuckles-notification
+  template:
+    metadata:
+      labels:
+        app: knuckles-notification
+        tier: microservice
+    spec:
+      containers:
+        - name: notification
+          image: knucklesacr.azurecr.io/knuckles-notification:latest
+          ports:
+            - containerPort: 3001
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "3001"
+            - name: REDIS_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: knuckles-secrets
+                  key: REDIS_HOST
+            - name: REDIS_PORT
+              value: "6379"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: knuckles-secrets
+                  key: REDIS_PASSWORD
+            - name: SMTP_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: knuckles-secrets
+                  key: MAIL_HOST
+            - name: SMTP_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: knuckles-secrets
+                  key: MAIL_PORT
+            - name: SMTP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: knuckles-secrets
+                  key: MAIL_USERNAME
+            - name: SMTP_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: knuckles-secrets
+                  key: MAIL_PASSWORD
+            - name: MAIL_FROM
+              value: "noreply@knucklesproducts.com"
+          # Health checks
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3001
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+
+---
+# ── Service: Internal access to notification service ────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: knuckles-notification
+  namespace: knuckles
+  labels:
+    app: knuckles-notification
+spec:
+  type: ClusterIP
+  selector:
+    app: knuckles-notification
+  ports:
+    - name: http
+      port: 3001
+      targetPort: 3001
+      protocol: TCP

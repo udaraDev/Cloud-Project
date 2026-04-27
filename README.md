@@ -1,61 +1,132 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# 🏔️ KnucklesProducts — Cloud-Native E-Commerce Platform
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+![CI Pipeline](https://github.com/udaraDev/Cloud-Project/actions/workflows/ci.yml/badge.svg)
+![Architecture](https://img.shields.io/badge/Architecture-Microservices-blue)
+![Deployment](https://img.shields.io/badge/Deployment-Azure_AKS-0078D4)
 
-## About Laravel
+KnucklesProducts is a modernized, cloud-native e-commerce application demonstrating advanced microservices architecture. Originally a monolithic Laravel application, it has been successfully decomposed into decoupled services using **Docker**, orchestrated via **Kubernetes (AKS)**, and communicates asynchronously via **Redis Pub/Sub** and **Message Queues**.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+---
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## 🏗️ Cloud-Native Architecture
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+This project implements a Polyglot Microservices Architecture consisting of **6 distinct, containerized services**:
 
-## Learning Laravel
+1. **Nginx Reverse Proxy**: Handles incoming HTTP traffic and routes it to the application.
+2. **Laravel Core App (PHP 8.2)**: Manages authentication, product catalog, cart, and checkout logic.
+3. **Queue Worker (PHP 8.2)**: Processes heavy asynchronous tasks (e.g., inventory updates) in the background.
+4. **Notification Service (Node.js)**: An independent microservice that listens to Redis Pub/Sub events and handles all email/notification logic.
+5. **MySQL Database**: Persistent storage for products, users, and orders.
+6. **Redis Broker**: Acts as the central nervous system for Session caching, Queue management, and Pub/Sub event broadcasting.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+### 🔄 Event-Driven Communication Pipeline
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+To ensure the application remains highly responsive, heavy operations are offloaded:
+- **HTTP Request**: User places an order (Fast, ~200ms response).
+- **Message Queue**: Laravel pushes `SendOrderConfirmationJob` and `UpdateInventoryJob` to Redis queues.
+- **Queue Worker Processing**: The background worker pulls the jobs and processes inventory updates.
+- **Pub/Sub Event**: The worker publishes an `order:confirmed` event to the Redis Broker.
+- **Node.js Subscriber**: The independent Notification Service picks up the event and sends the actual email.
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+---
 
-## Laravel Sponsors
+## 🚀 Key Features
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+* **Microservices Decomposition**: Core application and notification systems are completely decoupled.
+* **Polyglot Environment**: Utilizes the best tool for the job (PHP/Laravel for robust core logic, Node.js for high-throughput event processing).
+* **Asynchronous Processing**: Zero UI blocking during checkout; database and email operations happen in the background.
+* **Containerized**: Fully Dockerized for parity between local development and production.
+* **Azure AKS Ready**: Includes complete Kubernetes ConfigMaps, Secrets, and Deployments customized for budget-optimized Azure execution.
+* **CI/CD Pipeline**: GitHub Actions automated pipeline for testing, security audits, and Docker image validation.
 
-### Premium Partners
+---
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+## 🐳 Running Locally (Docker Compose)
 
-## Contributing
+You can spin up the entire microservices cluster on your local machine using Docker Compose.
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### Prerequisites
+* [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running.
+* Git
 
-## Code of Conduct
+### Setup Instructions
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/udaraDev/Cloud-Project.git
+   cd Cloud-Project
+   ```
 
-## Security Vulnerabilities
+2. **Start the cluster:**
+   ```bash
+   # This will build the images and start all 6 containers in the background
+   docker compose up -d --build
+   ```
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+3. **Initialize the Database:**
+   ```bash
+   # Run migrations
+   docker compose exec app php artisan migrate --force
 
-## License
+   # Seed the database with products
+   docker compose exec app php artisan db:seed --class=ProductSeeder --force
+   ```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+4. **Access the Application:**
+   * **Web App:** http://localhost
+   * **Notification API Health:** http://localhost:3001/health
+
+5. **Test the Async Pipeline:**
+   Place an order on the website, then watch the worker and notification logs in real-time:
+   ```bash
+   docker logs knuckles-queue-worker -f
+   # In a separate terminal:
+   docker logs knuckles-notification -f
+   ```
+
+---
+
+## ☁️ Deploying to Azure Kubernetes Service (AKS)
+
+This project includes production-ready Kubernetes manifests in the `/k8s` directory.
+
+1. Provision an AKS Cluster and Azure Container Registry (ACR).
+2. Push the Docker images to your ACR.
+3. Apply the Kubernetes manifests:
+   ```bash
+   # 1. Apply configurations and secrets
+   kubectl apply -f k8s/configmap.yaml
+   kubectl apply -f k8s/secrets.yaml
+
+   # 2. Deploy stateful services (MySQL, Redis)
+   kubectl apply -f k8s/mysql-deployment.yaml
+   kubectl apply -f k8s/redis-deployment.yaml
+
+   # 3. Deploy the application stack
+   kubectl apply -f k8s/app-deployment.yaml
+   kubectl apply -f k8s/queue-worker-deployment.yaml
+   kubectl apply -f k8s/notification-service-deployment.yaml
+   ```
+*(Note: Full detailed deployment instructions can be found in `docs/aks-deployment-guide.md`)*
+
+---
+
+## 🛡️ CI/CD & Automated Testing
+
+The repository uses **GitHub Actions** to enforce continuous integration. On every push to `main` or `feature/*`, the pipeline automatically:
+1. Provisions a test environment with MySQL and Redis service containers.
+2. Runs the full Pest testing suite (verifying UI endpoints and asynchronous job dispatches).
+3. Executes a Composer security audit.
+4. Builds and verifies all Docker images across the monorepo.
+
+---
+
+## 📚 Project Evaluation Notes
+
+This project was specifically designed to fulfill advanced Cloud Computing requirements:
+- **Scalability**: Redis handles sessions and caching, meaning the `app` pods can be scaled horizontally without session loss.
+- **Resiliency**: The worker incorporates fallback mechanisms (try-catch) so local dev works gracefully even if the Redis broker is unavailable.
+- **Security**: Hardcoded secrets have been removed; production secrets are injected via `.env.docker` and Kubernetes `Secret` manifests.
+
+---
+*Handcrafted for Cloud Computing Module*

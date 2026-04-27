@@ -1,0 +1,152 @@
+version: '3.8'
+
+# ============================================================
+# KnucklesProducts - Cloud-Native Microservices Architecture
+# ============================================================
+# Services:
+#   1. nginx          - Reverse proxy / Load balancer
+#   2. app            - Laravel web application
+#   3. mysql          - Relational database (simulates AWS RDS)
+#   4. redis          - Cache, sessions, message broker (simulates ElastiCache)
+#   5. queue-worker   - Async order processing service
+#   6. notification   - Notification microservice (Node.js)
+#
+# Usage:
+#   docker compose up --build        (start all services)
+#   docker compose down              (stop all services)
+#   docker compose logs -f app       (view app logs)
+#   docker compose logs -f queue-worker  (view async job processing)
+# ============================================================
+
+services:
+  # ─── Service 1: Nginx Reverse Proxy ───────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: knuckles-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./public:/var/www/html/public:ro
+    depends_on:
+      - app
+    networks:
+      - knuckles-network
+    restart: unless-stopped
+
+  # ─── Service 2: Laravel Application ───────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    container_name: knuckles-app
+    volumes:
+      - .:/var/www/html
+      - /var/www/html/vendor
+      - /var/www/html/node_modules
+    env_file:
+      - .env.docker
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - knuckles-network
+    restart: unless-stopped
+
+  # ─── Service 3: MySQL Database (simulates AWS RDS) ────────
+  mysql:
+    image: mysql:8.0
+    container_name: knuckles-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: secret
+      MYSQL_DATABASE: knucklesproducts
+      MYSQL_USER: knuckles
+      MYSQL_PASSWORD: secret
+    volumes:
+      - mysql-data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    networks:
+      - knuckles-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ─── Service 4: Redis (Cache + Sessions + Queue Broker) ───
+  redis:
+    image: redis:7-alpine
+    container_name: knuckles-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - knuckles-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Service 5: Queue Worker (Order Processing Service) ───
+  queue-worker:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    container_name: knuckles-queue-worker
+    command: php artisan queue:work redis --sleep=3 --tries=3 --max-time=3600
+    volumes:
+      - .:/var/www/html
+      - /var/www/html/vendor
+      - /var/www/html/node_modules
+    env_file:
+      - .env.docker
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - knuckles-network
+    restart: unless-stopped
+
+  # ─── Service 6: Notification Microservice (Node.js) ───────
+  notification-service:
+    build:
+      context: ./services/notification
+      dockerfile: Dockerfile
+    container_name: knuckles-notification
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SMTP_HOST=mailpit
+      - SMTP_PORT=1025
+      - MAIL_FROM=noreply@knucklesproducts.com
+      - PORT=3001
+    ports:
+      - "3001:3001"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - knuckles-network
+    restart: unless-stopped
+
+# ─── Shared Network ─────────────────────────────────────────
+networks:
+  knuckles-network:
+    driver: bridge
+
+# ─── Persistent Volumes ─────────────────────────────────────
+volumes:
+  mysql-data:
+    driver: local
+  redis-data:
+    driver: local

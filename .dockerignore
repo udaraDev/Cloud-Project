@@ -1,0 +1,13 @@
+vendor/
+node_modules/
+.env
+.git/
+.github/
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+bootstrap/cache/*
+docker-compose.override.yml
+*.md
+tests/

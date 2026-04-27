@@ -1,0 +1,97 @@
+# ============================================================
+# KnucklesProducts — Redis Pod (Budget-Friendly)
+# ============================================================
+# Runs Redis inside the AKS cluster instead of using Azure
+# Cache for Redis (~$16/month savings).
+#
+# Redis serves triple duty:
+#   1. Session store (shared across app pods)
+#   2. Cache store (shared across app pods)
+#   3. Message broker (queue + pub/sub between services)
+#
+# In production, replace with Azure Cache for Redis
+# by simply changing REDIS_HOST in the ConfigMap/Secret.
+# ============================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knuckles-redis
+  namespace: knuckles
+  labels:
+    app: knuckles-redis
+    tier: cache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: knuckles-redis
+  template:
+    metadata:
+      labels:
+        app: knuckles-redis
+        tier: cache
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          command: ["redis-server", "--appendonly", "yes", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+          volumeMounts:
+            - name: redis-storage
+              mountPath: /data
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "192Mi"
+      volumes:
+        - name: redis-storage
+          persistentVolumeClaim:
+            claimName: redis-pvc
+
+---
+# ── PVC: Persistent storage for Redis AOF ───────────────────
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-pvc
+  namespace: knuckles
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: managed-premium
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+# ── Service: Makes Redis accessible within the cluster ──────
+# Service name "redis" matches REDIS_HOST in the app config
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: knuckles
+  labels:
+    app: knuckles-redis
+spec:
+  type: ClusterIP
+  selector:
+    app: knuckles-redis
+  ports:
+    - port: 6379
+      targetPort: 6379

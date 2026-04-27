@@ -51,11 +51,11 @@ Route::get('/contact', function () {
 Route::middleware('guest')->group(function () {
     // Login Routes
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
-    Route::post('/login', [AuthController::class, 'login']);
+    Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
 
     // Registration Routes
     Route::get('/register', [AuthController::class, 'showRegister'])->name('register');
-    Route::post('/register', [AuthController::class, 'register']);
+    Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:5,1');
     Route::get('/regy', [AuthController::class, 'regy']);
 
     // Password Reset Routes
@@ -96,7 +96,7 @@ Route::middleware('auth')->group(function () {
     // Checkout Routes
     Route::prefix('checkout')->name('checkout.')->group(function () {
         Route::get('/', [CheckoutController::class, 'index'])->name('index');
-        Route::post('/process', [CheckoutController::class, 'process'])->name('process');
+        Route::post('/process', [CheckoutController::class, 'process'])->name('process')->middleware('throttle:10,1');
         Route::get('/success/{order}', [CheckoutController::class, 'success'])->name('success');
     });
 });
