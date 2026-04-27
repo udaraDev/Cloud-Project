@@ -63,6 +63,9 @@ jobs:
           sed -i 's|image: knuckles-queue-worker:latest|image: ${{ env.ACR_NAME }}.azurecr.io/knuckles-queue-worker:${{ github.sha }}|g' k8s/queue-worker-deployment.yaml
           sed -i 's|image: knuckles-notification:latest|image: ${{ env.ACR_NAME }}.azurecr.io/knuckles-notification:${{ github.sha }}|g' k8s/notification-deployment.yaml
           
+          # Create the namespace if it doesn't exist
+          kubectl create namespace knuckles --dry-run=client -o yaml | kubectl apply -f -
+          
           # Deploy Stateful Services (MySQL & Redis pods)
           kubectl apply -f k8s/configmap.yaml
           kubectl apply -f k8s/secrets.yaml
