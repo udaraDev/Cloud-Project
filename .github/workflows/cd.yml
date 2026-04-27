@@ -1,0 +1,81 @@
+name: 🚀 CD Pipeline (Azure AKS)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: # Allows you to manually trigger the deployment
+
+env:
+  ACR_NAME: ${{ secrets.ACR_NAME }} # e.g., knucklesacr
+  AKS_CLUSTER_NAME: ${{ secrets.AKS_CLUSTER_NAME }} # e.g., knuckles-aks
+  RESOURCE_GROUP: ${{ secrets.RESOURCE_GROUP }} # e.g., knuckles-rg
+
+jobs:
+  build-and-deploy:
+    name: Build, Push, and Deploy to AKS
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔑 Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: 🔐 Login to Azure Container Registry (ACR)
+        run: |
+          az acr login --name ${{ env.ACR_NAME }}
+
+      # --- Build and Push Images ---
+      - name: 🏗️ Build & Push Laravel App Image
+        run: |
+          docker build -f docker/app/Dockerfile -t ${{ env.ACR_NAME }}.azurecr.io/knuckles-app:${{ github.sha }} -t ${{ env.ACR_NAME }}.azurecr.io/knuckles-app:latest .
+          docker push ${{ env.ACR_NAME }}.azurecr.io/knuckles-app:${{ github.sha }}
+          docker push ${{ env.ACR_NAME }}.azurecr.io/knuckles-app:latest
+
+      - name: 🏗️ Build & Push Queue Worker Image
+        run: |
+          docker build -f docker/app/Dockerfile -t ${{ env.ACR_NAME }}.azurecr.io/knuckles-queue-worker:${{ github.sha }} -t ${{ env.ACR_NAME }}.azurecr.io/knuckles-queue-worker:latest .
+          docker push ${{ env.ACR_NAME }}.azurecr.io/knuckles-queue-worker:${{ github.sha }}
+          docker push ${{ env.ACR_NAME }}.azurecr.io/knuckles-queue-worker:latest
+
+      - name: 🏗️ Build & Push Notification Service Image
+        run: |
+          docker build -f services/notification/Dockerfile -t ${{ env.ACR_NAME }}.azurecr.io/knuckles-notification:${{ github.sha }} -t ${{ env.ACR_NAME }}.azurecr.io/knuckles-notification:latest services/notification/
+          docker push ${{ env.ACR_NAME }}.azurecr.io/knuckles-notification:${{ github.sha }}
+          docker push ${{ env.ACR_NAME }}.azurecr.io/knuckles-notification:latest
+
+      # --- Deploy to AKS ---
+      - name: ☸️ Get AKS Context
+        uses: azure/aks-set-context@v3
+        with:
+          resource-group: ${{ env.RESOURCE_GROUP }}
+          cluster-name: ${{ env.AKS_CLUSTER_NAME }}
+
+      - name: 🚀 Update Image Tags in K8s Manifests & Deploy
+        # This replaces your local images with the ACR images
+        run: |
+          # Use sed to dynamically update the images to point to the newly built tags
+          sed -i 's|image: knuckles-app:latest|image: ${{ env.ACR_NAME }}.azurecr.io/knuckles-app:${{ github.sha }}|g' k8s/app-deployment.yaml
+          sed -i 's|image: knuckles-queue-worker:latest|image: ${{ env.ACR_NAME }}.azurecr.io/knuckles-queue-worker:${{ github.sha }}|g' k8s/queue-worker-deployment.yaml
+          sed -i 's|image: knuckles-notification:latest|image: ${{ env.ACR_NAME }}.azurecr.io/knuckles-notification:${{ github.sha }}|g' k8s/notification-deployment.yaml
+          
+          # Deploy Stateful Services (MySQL & Redis pods)
+          kubectl apply -f k8s/configmap.yaml
+          kubectl apply -f k8s/secrets.yaml
+          kubectl apply -f k8s/mysql-deployment.yaml
+          kubectl apply -f k8s/redis-deployment.yaml
+          
+          # Deploy Application Services
+          kubectl apply -f k8s/app-deployment.yaml
+          kubectl apply -f k8s/queue-worker-deployment.yaml
+          kubectl apply -f k8s/notification-deployment.yaml
+          kubectl apply -f k8s/ingress.yaml
+          
+          # Wait for rollouts
+          kubectl rollout status deployment/knuckles-app
+          kubectl rollout status deployment/knuckles-queue-worker
+          kubectl rollout status deployment/knuckles-notification
