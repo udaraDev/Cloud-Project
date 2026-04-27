@@ -94,7 +94,7 @@ metadata:
   labels:
     app: knuckles-app
 spec:
-  type: ClusterIP
+  type: LoadBalancer
   selector:
     app: knuckles-app
   ports:
