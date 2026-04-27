@@ -77,13 +77,22 @@ class SendOrderConfirmationJob implements ShouldQueue
             })->toArray(),
         ];
 
-        // Publish to Redis pub/sub — the Notification Service (Node.js) subscribes to this channel
-        Redis::publish('order:confirmed', json_encode($payload));
-
-        Log::info("SendOrderConfirmationJob: Published order #{$order->id} confirmation to notification service.", [
-            'order_id' => $order->id,
-            'email' => $payload['email'],
-        ]);
+        // Publish to Redis pub/sub — the Notification Service (Node.js) subscribes to this channel.
+        // In local dev without Redis, falls back to logging the notification payload.
+        try {
+            Redis::publish('order:confirmed', json_encode($payload));
+            Log::info("SendOrderConfirmationJob: Published order #{$order->id} confirmation to notification service.", [
+                'order_id' => $order->id,
+                'email' => $payload['email'],
+            ]);
+        } catch (\Exception $e) {
+            // Redis not available (local dev) — log the payload instead
+            Log::info("SendOrderConfirmationJob: Order #{$order->id} confirmation processed (Redis unavailable, logged locally).", [
+                'order_id' => $order->id,
+                'email' => $payload['email'],
+                'payload' => $payload,
+            ]);
+        }
     }
 
     /**

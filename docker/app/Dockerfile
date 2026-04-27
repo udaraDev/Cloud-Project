@@ -28,14 +28,16 @@ WORKDIR /var/www/html
 # Copy composer files first (better Docker layer caching)
 COPY composer.json composer.lock ./
 
-# Install PHP dependencies
-RUN composer install --no-dev --optimize-autoloader --no-scripts --no-interaction
+# Install PHP dependencies (including dev for service providers like Pail)
+RUN composer install --optimize-autoloader --no-scripts --no-interaction
 
 # Copy application code
 COPY . .
 
-# Run post-install scripts
-RUN composer run-script post-autoload-dump
+# Clear any cached config/services and regenerate autoload
+RUN php artisan config:clear || true \
+    && php artisan cache:clear || true \
+    && composer dump-autoload --optimize
 
 # Set correct permissions
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache \

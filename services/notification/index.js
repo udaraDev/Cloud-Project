@@ -160,35 +160,33 @@ async function sendEmail(to, template) {
 }
 
 // ─── Redis Event Handlers ──────────────────────────────────
-subscriber.subscribe('order:confirmed', 'user:registered', (err, count) => {
+// Using psubscribe (pattern subscribe) because Laravel prefixes
+// Redis channels with the app name (e.g., "knucklesproducts_database_order:confirmed").
+// The wildcard pattern ensures we catch events regardless of the prefix.
+subscriber.psubscribe('*order:confirmed', '*user:registered', (err, count) => {
     if (err) {
         console.error('❌ Failed to subscribe to channels:', err.message);
         return;
     }
-    console.log(`📡 Subscribed to ${count} notification channels`);
+    console.log(`📡 Subscribed to ${count} notification channels (pattern matching)`);
 });
 
-subscriber.on('message', async (channel, message) => {
+subscriber.on('pmessage', async (pattern, channel, message) => {
     metrics.eventsReceived++;
     metrics.lastEventAt = new Date().toISOString();
-    console.log(`📨 Event received on [${channel}]`);
+    console.log(`📨 Event received on [${channel}] (matched pattern: ${pattern})`);
 
     try {
         const data = JSON.parse(message);
 
-        switch (channel) {
-            case 'order:confirmed':
-                const orderEmail = buildOrderConfirmationEmail(data);
-                await sendEmail(data.email, orderEmail);
-                break;
-
-            case 'user:registered':
-                const welcomeEmail = buildWelcomeEmail(data);
-                await sendEmail(data.email, welcomeEmail);
-                break;
-
-            default:
-                console.log(`⚠️ Unknown channel: ${channel}`);
+        if (channel.includes('order:confirmed')) {
+            const orderEmail = buildOrderConfirmationEmail(data);
+            await sendEmail(data.email, orderEmail);
+        } else if (channel.includes('user:registered')) {
+            const welcomeEmail = buildWelcomeEmail(data);
+            await sendEmail(data.email, welcomeEmail);
+        } else {
+            console.log(`⚠️ Unknown channel: ${channel}`);
         }
     } catch (error) {
         console.error(`❌ Error processing event on [${channel}]:`, error.message);
