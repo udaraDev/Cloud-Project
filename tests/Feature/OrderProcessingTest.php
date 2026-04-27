@@ -22,22 +22,32 @@ test('checkout dispatches async jobs to queue', function () {
     $user = User::factory()->create();
     $product = Product::factory()->create(['stock_quantity' => 50, 'price' => 500]);
 
-    $this->actingAs($user)
-        ->post('/cart/add', ['product_id' => $product->id, 'quantity' => 1]);
+    $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class);
 
-    $this->actingAs($user)
-        ->post('/checkout', [
-            'first_name' => 'Test',
-            'last_name' => 'User',
-            'email' => $user->email,
-            'phone' => '0771234567',
-            'address' => '123 Test Street',
-            'city' => 'Kandy',
-            'postal_code' => '20000',
-            'country' => 'Sri Lanka',
+    \App\Models\Cart::create([
+        'user_id' => $user->id,
+        'product_id' => $product->id,
+        'quantity' => 1,
+        'price' => $product->price,
+        'total' => $product->price
+    ]);
+
+    $response2 = $this->actingAs($user)
+        ->post('/checkout/process', [
+            'shipping_first_name' => 'Test',
+            'shipping_last_name' => 'User',
+            'shipping_email' => $user->email,
+            'shipping_phone' => '0771234567',
+            'shipping_address' => '123 Test Street',
+            'shipping_city' => 'Kandy',
+            'shipping_postal_code' => '20000',
+            'shipping_country' => 'Sri Lanka',
             'payment_method' => 'cash_on_delivery',
         ]);
-
+        
+    $response2->assertSessionHasNoErrors();
+    $response2->assertRedirect(); // Usually redirects to success page
+    
     Queue::assertPushed(SendOrderConfirmationJob::class);
     Queue::assertPushed(UpdateInventoryJob::class);
 });
@@ -54,6 +64,12 @@ test('update inventory job decrements product stock', function () {
         'payment_status' => 'pending',
         'payment_method' => 'cash_on_delivery',
         'shipping_address' => json_encode([
+            'address' => '123 Test St',
+            'city' => 'Kandy',
+            'postal_code' => '20000',
+            'country' => 'Sri Lanka',
+        ]),
+        'billing_address' => json_encode([
             'address' => '123 Test St',
             'city' => 'Kandy',
             'postal_code' => '20000',
@@ -87,6 +103,11 @@ test('send order confirmation job does not fail for valid order', function () {
         'payment_status' => 'pending',
         'payment_method' => 'cash_on_delivery',
         'shipping_address' => json_encode([
+            'email' => $user->email,
+            'address' => '123 Test St',
+            'city' => 'Kandy',
+        ]),
+        'billing_address' => json_encode([
             'email' => $user->email,
             'address' => '123 Test St',
             'city' => 'Kandy',
