@@ -89,7 +89,7 @@ jobs:
           DB_HOST: 127.0.0.1
           DB_PORT: 3306
           DB_DATABASE: knucklesproducts_test
-          DB_USERNAME: knuckles
+          DB_USERNAME: root
           DB_PASSWORD: secret
           REDIS_HOST: 127.0.0.1
           SESSION_DRIVER: redis
@@ -103,7 +103,7 @@ jobs:
           DB_HOST: 127.0.0.1
           DB_PORT: 3306
           DB_DATABASE: knucklesproducts_test
-          DB_USERNAME: knuckles
+          DB_USERNAME: root
           DB_PASSWORD: secret
           REDIS_HOST: 127.0.0.1
           SESSION_DRIVER: redis
