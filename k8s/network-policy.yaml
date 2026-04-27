@@ -1,0 +1,103 @@
+# ============================================================
+# KnucklesProducts — Kubernetes Network Policies
+# ============================================================
+# Restricts pod-to-pod communication within the cluster.
+# Only pods that need access to MySQL and Redis can reach them.
+#
+# Without these policies, ANY pod in the namespace can
+# connect to the database — a security risk in production.
+#
+# Policy summary:
+#   - MySQL (3306): Only app pods + worker pods can connect
+#   - Redis (6379): App pods + worker pods + notification pods
+#   - Notification (3001): Only app pods can call the REST API
+# ============================================================
+
+# ── Policy 1: Restrict MySQL access ─────────────────────────
+# Only the app (frontend tier) and queue worker (worker tier)
+# need direct database access. The notification service
+# communicates via Redis pub/sub, not SQL.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mysql-restrict-access
+  namespace: knuckles
+  labels:
+    app: knuckles
+spec:
+  podSelector:
+    matchLabels:
+      app: knuckles-mysql
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              tier: frontend
+        - podSelector:
+            matchLabels:
+              tier: worker
+      ports:
+        - protocol: TCP
+          port: 3306
+
+---
+# ── Policy 2: Restrict Redis access ─────────────────────────
+# Redis is used by app (sessions/cache), worker (queue),
+# and notification service (pub/sub subscriber).
+# All three tiers need access.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-restrict-access
+  namespace: knuckles
+  labels:
+    app: knuckles
+spec:
+  podSelector:
+    matchLabels:
+      app: knuckles-redis
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              tier: frontend
+        - podSelector:
+            matchLabels:
+              tier: worker
+        - podSelector:
+            matchLabels:
+              tier: microservice
+      ports:
+        - protocol: TCP
+          port: 6379
+
+---
+# ── Policy 3: Restrict Notification Service access ──────────
+# Only the app tier can call the notification REST API.
+# The notification service also receives events via Redis
+# pub/sub (covered by Policy 2 above).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: notification-restrict-access
+  namespace: knuckles
+  labels:
+    app: knuckles
+spec:
+  podSelector:
+    matchLabels:
+      app: knuckles-notification
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              tier: frontend
+      ports:
+        - protocol: TCP
+          port: 3001

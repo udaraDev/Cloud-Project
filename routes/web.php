@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\ProfileController;
@@ -11,8 +12,37 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProviderRedirectController;
 use App\Http\Controllers\ProviderCallbackController;
 
+// ── Deep Health Check (for Kubernetes probes & monitoring) ──
+// Verifies connectivity to all backing services (MySQL + Redis).
+// Returns 200 if all healthy, 503 if any service is unreachable.
+Route::get('/healthz', function () {
+    $health = ['status' => 'healthy', 'services' => []];
+    $httpStatus = 200;
 
+    // Check MySQL
+    try {
+        DB::connection()->getPdo();
+        $health['services']['mysql'] = 'connected';
+    } catch (\Exception $e) {
+        $health['services']['mysql'] = 'disconnected: ' . $e->getMessage();
+        $health['status'] = 'unhealthy';
+        $httpStatus = 503;
+    }
 
+    // Check Redis
+    try {
+        Illuminate\Support\Facades\Redis::ping();
+        $health['services']['redis'] = 'connected';
+    } catch (\Exception $e) {
+        $health['services']['redis'] = 'disconnected: ' . $e->getMessage();
+        $health['status'] = 'unhealthy';
+        $httpStatus = 503;
+    }
+
+    $health['timestamp'] = now()->toISOString();
+
+    return response()->json($health, $httpStatus);
+});
 
 Route::get('/', function () {
     $featuredProducts = App\Models\Product::active()->inStock()->featured()->take(4)->get();
