@@ -4,40 +4,9 @@
 ![Architecture](https://img.shields.io/badge/Architecture-Microservices-blue)
 ![Deployment](https://img.shields.io/badge/Deployment-Azure_AKS-0078D4)
 
-KnucklesProducts is a modernized, cloud-native e-commerce application demonstrating advanced microservices architecture. Originally a monolithic Laravel application, it has been successfully decomposed into decoupled services using **Docker**, orchestrated via **Kubernetes (AKS)**, and communicates asynchronously via **Redis Pub/Sub** and **Message Queues**.
+**KnucklesProducts** is a modern e-commerce platform for handcrafted artisan products from the Knuckles mountain range of Sri Lanka. The platform allows users to browse products, manage their shopping cart, and place orders with multiple payment options. It features Google OAuth authentication, a responsive UI, and a fully asynchronous checkout pipeline where inventory updates and email notifications are processed in the background — ensuring a fast, seamless user experience.
 
----
-
-## 🏗️ Cloud-Native Architecture
-
-This project implements a Polyglot Microservices Architecture consisting of **6 distinct, containerized services**:
-
-1. **Nginx Reverse Proxy**: Handles incoming HTTP traffic and routes it to the application.
-2. **Laravel Core App (PHP 8.2)**: Manages authentication, product catalog, cart, and checkout logic.
-3. **Queue Worker (PHP 8.2)**: Processes heavy asynchronous tasks (e.g., inventory updates) in the background.
-4. **Notification Service (Node.js)**: An independent microservice that listens to Redis Pub/Sub events and handles all email/notification logic.
-5. **MySQL Database**: Persistent storage for products, users, and orders.
-6. **Redis Broker**: Acts as the central nervous system for Session caching, Queue management, and Pub/Sub event broadcasting.
-
-### 🔄 Event-Driven Communication Pipeline
-
-To ensure the application remains highly responsive, heavy operations are offloaded:
-- **HTTP Request**: User places an order (Fast, ~200ms response).
-- **Message Queue**: Laravel pushes `SendOrderConfirmationJob` and `UpdateInventoryJob` to Redis queues.
-- **Queue Worker Processing**: The background worker pulls the jobs and processes inventory updates.
-- **Pub/Sub Event**: The worker publishes an `order:confirmed` event to the Redis Broker.
-- **Node.js Subscriber**: The independent Notification Service picks up the event and sends the actual email.
-
----
-
-## 🚀 Key Features
-
-* **Microservices Decomposition**: Core application and notification systems are completely decoupled.
-* **Polyglot Environment**: Utilizes the best tool for the job (PHP/Laravel for robust core logic, Node.js for high-throughput event processing).
-* **Asynchronous Processing**: Zero UI blocking during checkout; database and email operations happen in the background.
-* **Containerized**: Fully Dockerized for parity between local development and production.
-* **Azure AKS Ready**: Includes complete Kubernetes ConfigMaps, Secrets, and Deployments customized for budget-optimized Azure execution.
-* **CI/CD Pipeline**: GitHub Actions automated pipeline for testing, security audits, and Docker image validation.
+Built as a cloud-native application for the **EE7222 Cloud Computing** module, the project demonstrates how a real-world web application can be decomposed into independently deployable microservices, containerized with Docker, orchestrated via Kubernetes, and deployed to Azure AKS.
 
 ---
 
@@ -75,6 +44,7 @@ You can spin up the entire microservices cluster on your local machine using Doc
 4. **Access the Application:**
    * **Web App:** http://localhost
    * **Notification API Health:** http://localhost:3001/health
+   * **Deep Health Check:** http://localhost/healthz
 
 5. **Test the Async Pipeline:**
    Place an order on the website, then watch the worker and notification logs in real-time:
@@ -84,49 +54,102 @@ You can spin up the entire microservices cluster on your local machine using Doc
    docker logs knuckles-notification -f
    ```
 
----
-
-## ☁️ Deploying to Azure Kubernetes Service (AKS)
-
-This project includes production-ready Kubernetes manifests in the `/k8s` directory.
-
-1. Provision an AKS Cluster and Azure Container Registry (ACR).
-2. Push the Docker images to your ACR.
-3. Apply the Kubernetes manifests:
+6. **Stop the cluster:**
    ```bash
-   # 1. Apply configurations and secrets
-   kubectl apply -f k8s/configmap.yaml
-   kubectl apply -f k8s/secrets.yaml
-
-   # 2. Deploy stateful services (MySQL, Redis)
-   kubectl apply -f k8s/mysql-deployment.yaml
-   kubectl apply -f k8s/redis-deployment.yaml
-
-   # 3. Deploy the application stack
-   kubectl apply -f k8s/app-deployment.yaml
-   kubectl apply -f k8s/queue-worker-deployment.yaml
-   kubectl apply -f k8s/notification-service-deployment.yaml
+   docker compose down
    ```
-*(Note: Full detailed deployment instructions can be found in `docs/aks-deployment-guide.md`)*
 
 ---
 
-## 🛡️ CI/CD & Automated Testing
+## 🏗️ Cloud-Native Architecture
 
-The repository uses **GitHub Actions** to enforce continuous integration. On every push to `main` or `feature/*`, the pipeline automatically:
-1. Provisions a test environment with MySQL and Redis service containers.
-2. Runs the full Pest testing suite (verifying UI endpoints and asynchronous job dispatches).
-3. Executes a Composer security audit.
-4. Builds and verifies all Docker images across the monorepo.
+This project implements a **Polyglot Microservices Architecture** consisting of **6 distinct, containerized services**:
+
+| # | Service | Technology | Role |
+|---|---|---|---|
+| 1 | **Nginx Reverse Proxy** | Nginx Alpine | HTTP routing, load balancing, static asset serving, security headers |
+| 2 | **Laravel Core App** | PHP 8.2-FPM | Authentication, product catalog, cart, checkout, async job dispatch |
+| 3 | **Queue Worker** | PHP 8.2 (shared image) | Background order processing, inventory updates, Redis event publishing |
+| 4 | **Notification Service** | Node.js 20 + Express | Independent microservice — subscribes to Redis Pub/Sub for email notifications |
+| 5 | **MySQL Database** | MySQL 8.0 | Persistent relational storage for products, users, and orders |
+| 6 | **Redis Broker** | Redis 7 Alpine | Triple-duty: session store, cache, and message broker (queues + pub/sub) |
+
+### 🔄 Event-Driven Communication Pipeline
+
+The application uses **four communication patterns** to demonstrate distributed systems concepts:
+
+```
+① Synchronous HTTP     Browser → Nginx → PHP-FPM → MySQL
+② Async Message Queue   Checkout → Redis Queue → Queue Worker
+③ Event-Driven Pub/Sub  Worker → Redis PUBLISH → Node.js SUBSCRIBE → Email
+④ REST API              Service → HTTP → Notification API
+```
+
+**Checkout Flow:**
+1. **HTTP Request** — User places an order (fast, ~200ms response)
+2. **Message Queue** — Laravel pushes `SendOrderConfirmationJob` and `UpdateInventoryJob` to Redis queues
+3. **Queue Worker** — Background worker picks up jobs, processes inventory, publishes `order:confirmed` event
+4. **Pub/Sub Event** — The Node.js Notification Service receives the event and sends the confirmation email
+
+### ☁️ Azure AKS Deployment
+
+The project includes production-ready Kubernetes manifests in the `/k8s` directory:
+
+| Manifest | Purpose |
+|---|---|
+| `configmap.yaml` | Non-sensitive environment configuration |
+| `secrets.yaml` | Database credentials, API keys, OAuth secrets |
+| `app-deployment.yaml` | Laravel app + Nginx sidecar (2 replicas, HPA auto-scaling 2–10 pods) |
+| `queue-worker-deployment.yaml` | Queue workers (2 replicas, HPA 1–5 pods) |
+| `notification-deployment.yaml` | Node.js notification service |
+| `mysql-deployment.yaml` | MySQL pod + PersistentVolumeClaim (5Gi) |
+| `redis-deployment.yaml` | Redis pod + PersistentVolumeClaim (1Gi) |
+| `ingress.yaml` | NGINX Ingress Controller with rate limiting |
+| `network-policy.yaml` | Least-privilege pod-to-pod communication rules |
+
+**Deploy to AKS:**
+```bash
+# Apply configurations
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/secrets.yaml
+kubectl apply -f k8s/network-policy.yaml
+
+# Deploy stateful services
+kubectl apply -f k8s/mysql-deployment.yaml
+kubectl apply -f k8s/redis-deployment.yaml
+
+# Deploy application stack
+kubectl apply -f k8s/app-deployment.yaml
+kubectl apply -f k8s/queue-worker-deployment.yaml
+kubectl apply -f k8s/notification-deployment.yaml
+kubectl apply -f k8s/ingress.yaml
+```
+
+> Full deployment guide: [`docs/aks-deployment-guide.md`](docs/aks-deployment-guide.md) | Architecture deep-dive: [`docs/architecture.md`](docs/architecture.md)
+
+### 🛡️ CI/CD Pipeline
+
+The repository uses **GitHub Actions** for continuous integration and deployment:
+
+| Pipeline | Trigger | What It Does |
+|---|---|---|
+| **CI** (`ci.yml`) | Push to `main`, `feature/*`, PRs | Pest tests, security audit, code style check, Docker build verification |
+| **CD** (`cd.yml`) | Push to `main` | Build images → Push to ACR → Deploy to AKS → Run migrations |
 
 ---
 
-## 📚 Project Evaluation Notes
+## 👥 Group Members
 
-This project was specifically designed to fulfill advanced Cloud Computing requirements:
-- **Scalability**: Redis handles sessions and caching, meaning the `app` pods can be scaled horizontally without session loss.
-- **Resiliency**: The worker incorporates fallback mechanisms (try-catch) so local dev works gracefully even if the Redis broker is unavailable.
-- **Security**: Hardcoded secrets have been removed; production secrets are injected via `.env.docker` and Kubernetes `Secret` manifests.
+| Registration No. | Name |
+|---|---|
+| EG/2021/4614 | Kodithuwakku K.K.A.M |
+| EG/2021/4613 | Kodikara A.W |
+| EG/2020/4017 | Kavindi E.H.S |
+| EG/2021/4805 | Senevirathna P.U.S |
+
+**Module:** EE7222 — Cloud Computing  
+**Department:** Electrical & Information Engineering  
+**University of Ruhuna**
 
 ---
-*Handcrafted for Cloud Computing Module*
+*Handcrafted for Cloud Computing Module* 🏔️
