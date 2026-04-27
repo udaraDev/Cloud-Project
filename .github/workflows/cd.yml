@@ -56,29 +56,34 @@ jobs:
           cluster-name: ${{ env.AKS_CLUSTER_NAME }}
 
       - name: 🚀 Update Image Tags in K8s Manifests & Deploy
-        # This replaces your local images with the ACR images
+        # Apply manifests, then set container images to the exact commit SHA.
         run: |
-          # Use sed to dynamically update the images to point to the newly built tags
-          sed -i 's|image: knuckles-app:latest|image: ${{ env.ACR_NAME }}.azurecr.io/knuckles-app:${{ github.sha }}|g' k8s/app-deployment.yaml
-          sed -i 's|image: knuckles-queue-worker:latest|image: ${{ env.ACR_NAME }}.azurecr.io/knuckles-queue-worker:${{ github.sha }}|g' k8s/queue-worker-deployment.yaml
-          sed -i 's|image: knuckles-notification:latest|image: ${{ env.ACR_NAME }}.azurecr.io/knuckles-notification:${{ github.sha }}|g' k8s/notification-deployment.yaml
-          
-          # Create the namespace if it doesn't exist
-          kubectl create namespace knuckles --dry-run=client -o yaml | kubectl apply -f -
-          
+          NAMESPACE="knuckles"
+
+          # Create namespace if it doesn't exist
+          kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+
           # Deploy Stateful Services (MySQL & Redis pods)
           kubectl apply -f k8s/configmap.yaml
           kubectl apply -f k8s/secrets.yaml
           kubectl apply -f k8s/mysql-deployment.yaml
           kubectl apply -f k8s/redis-deployment.yaml
-          
+
           # Deploy Application Services
           kubectl apply -f k8s/app-deployment.yaml
           kubectl apply -f k8s/queue-worker-deployment.yaml
           kubectl apply -f k8s/notification-deployment.yaml
           kubectl apply -f k8s/ingress.yaml
-          
+
+          # Pin images to the exact commit SHA for deterministic deploys
+          kubectl -n "$NAMESPACE" set image deployment/knuckles-app \
+            app=${{ env.ACR_NAME }}.azurecr.io/knuckles-app:${{ github.sha }}
+          kubectl -n "$NAMESPACE" set image deployment/knuckles-queue-worker \
+            queue-worker=${{ env.ACR_NAME }}.azurecr.io/knuckles-queue-worker:${{ github.sha }}
+          kubectl -n "$NAMESPACE" set image deployment/knuckles-notification \
+            notification=${{ env.ACR_NAME }}.azurecr.io/knuckles-notification:${{ github.sha }}
+
           # Wait for rollouts
-          kubectl rollout status deployment/knuckles-app
-          kubectl rollout status deployment/knuckles-queue-worker
-          kubectl rollout status deployment/knuckles-notification
+          kubectl rollout status deployment/knuckles-app -n knuckles
+          kubectl rollout status deployment/knuckles-queue-worker -n knuckles
+          kubectl rollout status deployment/knuckles-notification -n knuckles --timeout=300s
