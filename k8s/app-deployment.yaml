@@ -48,16 +48,14 @@ spec:
                 name: knuckles-secrets
           # Health checks — Kubernetes restarts unhealthy pods automatically
           livenessProbe:
-            httpGet:
-              path: /up
+            tcpSocket:
               port: 9000
             initialDelaySeconds: 30
             periodSeconds: 15
             timeoutSeconds: 5
             failureThreshold: 3
           readinessProbe:
-            httpGet:
-              path: /up
+            tcpSocket:
               port: 9000
             initialDelaySeconds: 10
             periodSeconds: 5
