@@ -77,7 +77,8 @@ jobs:
 
           # Pin images to the exact commit SHA for deterministic deploys
           kubectl -n "$NAMESPACE" set image deployment/knuckles-app \
-            app=${{ env.ACR_NAME }}.azurecr.io/knuckles-app:${{ github.sha }}
+            app=${{ env.ACR_NAME }}.azurecr.io/knuckles-app:${{ github.sha }} \
+            copy-public=${{ env.ACR_NAME }}.azurecr.io/knuckles-app:${{ github.sha }}
           kubectl -n "$NAMESPACE" set image deployment/knuckles-queue-worker \
             queue-worker=${{ env.ACR_NAME }}.azurecr.io/knuckles-queue-worker:${{ github.sha }}
           kubectl -n "$NAMESPACE" set image deployment/knuckles-notification \
